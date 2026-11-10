@@ -1,11 +1,11 @@
 
-name: Wifite2 Build
+name: Wifite2 Automatic Build
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'wifite2-master.zip'
+      - '**.zip'
       - '.github/workflows/build.yml'
 
 permissions:
@@ -29,32 +29,63 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install setuptools wheel
 
+      - name: Find ZIP File
+        shell: bash
+        run: |
+          mapfile -t ZIP_FILES < <(
+            find . -type f -iname '*.zip' \
+              -not -path './.git/*' | sort
+          )
+
+          if [ "${#ZIP_FILES[@]}" -eq 0 ]; then
+            echo "ERROR: No ZIP file found in repository."
+            exit 1
+          fi
+
+          if [ "${#ZIP_FILES[@]}" -gt 1 ]; then
+            echo "ERROR: Multiple ZIP files found:"
+            printf '%s\n' "${ZIP_FILES[@]}"
+            echo "Keep only one project ZIP file."
+            exit 1
+          fi
+
+          ZIP_FILE="${ZIP_FILES[0]}"
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
+          echo "Found: $ZIP_FILE"
+
       - name: Extract Project ZIP
         run: |
           mkdir -p extracted
-          unzip -q wifite2-master.zip -d extracted
+          unzip -q "$ZIP_FILE" -d extracted
+          echo "ZIP extracted successfully."
 
       - name: Locate Project
+        shell: bash
         run: |
-          PROJECT_DIR=$(find extracted -name setup.py -print -quit | xargs dirname)
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: setup.py not found"
+          SETUP_FILE=$(find extracted -name setup.py -print -quit)
+
+          if [ -z "$SETUP_FILE" ]; then
+            echo "ERROR: setup.py not found."
             exit 1
           fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-          echo "Project found: $PROJECT_DIR"
+
+          PROJECT_DIR=$(dirname "$SETUP_FILE")
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project: $PROJECT_DIR"
 
       - name: Check Python Syntax
         run: |
           python -m compileall -q "$PROJECT_DIR/wifite"
-          echo "Syntax check completed"
+          python -m py_compile "$PROJECT_DIR/Wifite.py"
+          echo "Python syntax check passed."
 
       - name: Build Python Package
         run: |
           cd "$PROJECT_DIR"
           python setup.py sdist bdist_wheel
 
-      - name: Upload Build Files
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Wifite2-Build
@@ -62,4 +93,3 @@ jobs:
             ${{ env.PROJECT_DIR }}/dist/*
           if-no-files-found: error
           retention-days: 14
-          
