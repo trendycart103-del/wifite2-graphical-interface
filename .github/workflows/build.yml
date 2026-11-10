@@ -1,0 +1,65 @@
+
+name: Wifite2 Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'wifite2-master.zip'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Build Tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install setuptools wheel
+
+      - name: Extract Project ZIP
+        run: |
+          mkdir -p extracted
+          unzip -q wifite2-master.zip -d extracted
+
+      - name: Locate Project
+        run: |
+          PROJECT_DIR=$(find extracted -name setup.py -print -quit | xargs dirname)
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: setup.py not found"
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          echo "Project found: $PROJECT_DIR"
+
+      - name: Check Python Syntax
+        run: |
+          python -m compileall -q "$PROJECT_DIR/wifite"
+          echo "Syntax check completed"
+
+      - name: Build Python Package
+        run: |
+          cd "$PROJECT_DIR"
+          python setup.py sdist bdist_wheel
+
+      - name: Upload Build Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wifite2-Build
+          path: |
+            ${{ env.PROJECT_DIR }}/dist/*
+          if-no-files-found: error
+          retention-days: 14
+          
